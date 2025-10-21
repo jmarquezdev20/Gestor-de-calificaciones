@@ -1,3 +1,4 @@
+
 Gestor de Calificaciones
 
 Gestor de Calificaciones: es una aplicación de escritorio desarrollada en Python con Tkinter y SQLite, diseñada para administrar estudiantes, materias y calificaciones escolares de forma local.  
