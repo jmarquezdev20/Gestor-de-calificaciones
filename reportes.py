@@ -1,18 +1,18 @@
 from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
 from reportlab.platypus import Table, TableStyle
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 import sqlite3, os
-from datetime import datetime
+
 
 def ventana_reportes(parent):
     frame = tk.Frame(parent, bg="#f8f9fa")
     frame.pack(fill='both', expand=True)
 
-    #HEADER
+    # HEADER
     header = tk.Frame(frame, bg="#2c3e50", height=70)
     header.pack(fill='x')
     header.pack_propagate(False)
@@ -20,7 +20,7 @@ def ventana_reportes(parent):
              bg="#2c3e50", fg="white",
              font=("Segoe UI", 18, "bold")).pack(pady=15)
 
-    #SELECCIÓN 
+    # SELECCIÓN
     select_frame = tk.Frame(frame, bg="#ffffff")
     select_frame.pack(fill='x', padx=20, pady=20)
 
@@ -46,7 +46,7 @@ def ventana_reportes(parent):
                           font=("Segoe UI", 11, "bold"), cursor="hand2", padx=20, pady=5)
     btn_todos.pack(side='left', padx=5)
 
-    #PREVIEW 
+    # PREVIEW
     preview_frame = tk.Frame(frame, bg="#f8f9fa")
     preview_frame.pack(fill='both', expand=True, padx=20, pady=10)
 
@@ -59,7 +59,7 @@ def ventana_reportes(parent):
                                              wrap='word', padx=20, pady=20)
     preview_text.pack(fill='both', expand=True)
 
-    #FUNCIONES
+    # FUNCIONES
     def cargar_estudiantes():
         conn = sqlite3.connect('calificaciones.db')
         cursor = conn.cursor()
@@ -73,11 +73,13 @@ def ventana_reportes(parent):
     def obtener_calificaciones(student_id):
         conn = sqlite3.connect('calificaciones.db')
         cursor = conn.cursor()
+
         cursor.execute("SELECT nombre, apellido, identificacion, grado FROM estudiantes WHERE id = ?", (student_id,))
         estudiante = cursor.fetchone()
         if not estudiante:
             conn.close()
             return None, [], None
+
         cursor.execute("""
             SELECT m.nombre, c.periodo, c.valor
             FROM calificaciones c
@@ -85,26 +87,35 @@ def ventana_reportes(parent):
             WHERE c.estudiante_id = ?
             ORDER BY m.nombre, c.periodo
         """, (student_id,))
-        calificaciones = cursor.fetchall()
-        
-        # Detectar el período académico más reciente
-        periodo_actual = None
-        if calificaciones:
-            periodo_actual = max([c[1] for c in calificaciones])
-        
+        notas_raw = cursor.fetchall()
+
+        periodo_actual = max([n[1] for n in notas_raw]) if notas_raw else None
+
+        materias_dict = {}
+        for materia, periodo, valor in notas_raw:
+            if materia not in materias_dict:
+                materias_dict[materia] = {1: None, 2: None, 3: None, 4: None}
+            if materias_dict[materia][periodo] is None:
+                materias_dict[materia][periodo] = []
+            if isinstance(materias_dict[materia][periodo], list):
+                materias_dict[materia][periodo].append(valor)
+
+        calificaciones = []
+        for materia, periodos in materias_dict.items():
+            for periodo in range(1, 5):
+                notas = periodos[periodo]
+                if isinstance(notas, list) and notas:
+                    promedio = sum(notas) / len(notas)
+                    periodos[periodo] = round(promedio, 1)
+                elif notas is None:
+                    periodos[periodo] = "--"
+
+            valores = [v for v in periodos.values() if v != "--"]
+            definitiva = round(sum(valores) / len(valores), 1) if valores else 0
+            calificaciones.append((materia, periodos[1], periodos[2], periodos[3], periodos[4], definitiva))
+
         conn.close()
         return estudiante, calificaciones, periodo_actual
-
-    def calcular_desempeno(promedio):
-        """Calcula el desempeño según la escala"""
-        if promedio >= 9.5:
-            return "SUPERIOR"
-        elif promedio >= 8.0:
-            return "ALTO"
-        elif promedio >= 6.0:
-            return "BASICO"
-        else:
-            return "BAJO"
 
     def ver_boletin():
         if not student_combo.get():
@@ -118,44 +129,23 @@ def ventana_reportes(parent):
             return
 
         nombre_completo = f"{estudiante[0]} {estudiante[1]}"
-        identificacion = estudiante[2]
         grado = estudiante[3]
+        periodo_texto = f"{periodo_actual}°" if periodo_actual else "N/A"
 
-        if not calificaciones:
-            preview_text.delete("1.0", "end")
-            preview_text.insert("end", f"No hay calificaciones registradas para {nombre_completo}")
-            return
-
-        materias = {}
-        for materia, periodo, valor in calificaciones:
-            if materia not in materias:
-                materias[materia] = {1: None, 2: None, 3: None}
-            materias[materia][periodo] = valor
-
-        periodo_texto = f"{periodo_actual}ro" if periodo_actual else "N/A"
-        
         preview_text.delete("1.0", "end")
-        preview_text.insert("end", "INSTITUCIÓN EDUCATIVA DEPARTAMENTAL TÉCNICA AGROPECUARIA LAS MERCEDES\n")
-        preview_text.insert("end", "Res. DANE No 025099 de 31 de DICIEMBRE 2021\n")
-        preview_text.insert("end", "RECONOCIMIENTO OFICIAL Resolución N° 002145\n\n")
+        preview_text.insert("end", f"INSTITUCIÓN EDUCATIVA DEPARTAMENTAL TÉCNICA AGROPECUARIA LAS MERCEDES\n")
         preview_text.insert("end", f"ESTUDIANTE: {nombre_completo.upper()}\n")
-        preview_text.insert("end", f"DIR. GRUPO: {grado}\n")
-        preview_text.insert("end", f"GRADO: PRIMERO - 1\n")
-        preview_text.insert("end", f"JORNADA: MAÑANA\n")
+        preview_text.insert("end", f"GRADO: {grado}\n")
         preview_text.insert("end", f"PERIODO ACADÉMICO: {periodo_texto}\n")
         preview_text.insert("end", f"AÑO LECTIVO: 2025\n\n")
         preview_text.insert("end", "─" * 100 + "\n")
-        preview_text.insert("end", "ÁREAS              ASIGNATURAS         1er Per  2do Per  3ro Per  PROMEDIO  DESEMPEÑO\n")
+        preview_text.insert("end", "MATERIA                 1er   2do   3er   4to   DEFINITIVA\n")
         preview_text.insert("end", "─" * 100 + "\n")
 
-        for materia, notas in materias.items():
-            p = [f"{notas[i]:.1f}" if notas[i] else "--" for i in range(1, 4)]
-            valores_validos = [n for n in notas.values() if n is not None]
-            promedio = sum(valores_validos) / len(valores_validos) if valores_validos else 0
-            desempeno = calcular_desempeno(promedio)
-            
-            preview_text.insert("end", 
-                f"{materia[:25].ljust(25)} {p[0]:>6}   {p[1]:>6}   {p[2]:>6}   {promedio:>6.1f}    {desempeno}\n")
+        for materia, p1, p2, p3, p4, definitiva in calificaciones:
+            preview_text.insert("end",
+                f"{materia[:25].ljust(25)} {str(p1).rjust(6)}  {str(p2).rjust(6)}  {str(p3).rjust(6)}  {str(p4).rjust(6)}  {str(definitiva).rjust(8)}\n"
+            )
 
     def generar_pdf_estudiante(estudiante_data=None):
         if estudiante_data:
@@ -172,214 +162,54 @@ def ventana_reportes(parent):
             return
 
         nombre_completo = f"{estudiante[0]} {estudiante[1]}".upper()
-        identificacion = estudiante[2]
         grado = estudiante[3]
+        periodo_texto = f"{periodo_actual}°" if periodo_actual else "N/A"
         pdf_name = f"Boletin_{nombre_completo.replace(' ', '_')}.pdf"
-        
-        # Determinar texto del período
-        periodo_texto = f"{periodo_actual}ro" if periodo_actual else "N/A"
 
         c = canvas.Canvas(pdf_name, pagesize=letter)
         width, height = letter
 
-        #ENCABEZADO CON LOGOS 
-        y_position = height - 40
-        
-        # Título de la institución (centrado)
-        c.setFont("Helvetica-Bold", 9)
-        c.drawCentredString(width / 2, y_position, 
-            "NOMBRE DE LA INSTITUCIÓN")
-        y_position -= 12
-        
-        c.setFont("Helvetica", 7)
-        c.drawCentredString(width / 2, y_position, 
-            "Res. DANE No")
-        y_position -= 10
-        c.drawCentredString(width / 2, y_position, 
-            "RECONOCIMIENTO (nombre de la institucion)")
-        y_position -= 10
-        c.drawCentredString(width / 2, y_position, 
-            "CORREGIMIENTO (nombre) - REPUBLICA DE COLOMBIA")
-        y_position -= 10
-        c.drawCentredString(width / 2, y_position, 
-            "Correo: institución - www.institución - Tel: institucion")
-        y_position -= 5
-        
-        c.setFont("Helvetica", 6)
-        c.drawRightString(width - 50, y_position, "Libertad y Orden")
-        
-        # Línea separadora
-        y_position -= 8
-        c.line(40, y_position, width - 40, y_position)
-        y_position -= 20
+        # ENCABEZADO
+        c.setFillColor(colors.HexColor("#2c3e50"))
+        c.rect(0, height - 70, width, 70, fill=1)
+        c.setFillColor(colors.white)
+        c.setFont("Helvetica-Bold", 14)
+        c.drawCentredString(width / 2, height - 45, "I.E.D TÉCNICA AGROPECUARIA LAS MERCEDES")
 
-        #INFORMACIÓN DEL ESTUDIANTE 
-        c.setFont("Helvetica", 8)
-        
-        # Fila 1: Estudiante, Grado, Jornada
-        x_labels = 50
-        x_values = 120
-        
-        c.setFont("Helvetica-Bold", 8)
-        c.drawString(x_labels, y_position, "ESTUDIANTE")
-        c.drawString(300, y_position, "GRADO")
-        c.drawString(450, y_position, "JORNADA")
-        
-        c.setFont("Helvetica", 8)
-        c.drawString(x_labels, y_position - 12, f": {nombre_completo}")
-        c.drawString(300, y_position - 12, f": PRIMERO - 1")
-        c.drawString(450, y_position - 12, f": MAÑANA")
-        
-        y_position -= 30
-        
-        # Fila 2: Dir. Grupo, Periodo Académico, Año Lectivo
-        c.setFont("Helvetica-Bold", 8)
-        c.drawString(x_labels, y_position, "DIR. GRUPO")
-        c.drawString(300, y_position, "PERIODO ACADEMICO")
-        c.drawString(450, y_position, "AÑO LECTIVO")
-        
-        c.setFont("Helvetica", 8)
-        c.drawString(x_labels, y_position - 12, f": nombre docente")
-        c.drawString(300, y_position - 12, f": {periodo_texto}")
-        c.drawString(450, y_position - 12, f": 2025")
-        
-        y_position -= 25
+        # DATOS DEL ESTUDIANTE
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica", 10)
+        c.drawString(50, height - 100, f"Estudiante: {nombre_completo}")
+        c.drawString(350, height - 100, f"Grado: {grado}")
+        c.drawString(50, height - 115, f"Periodo Académico: {periodo_texto}")
+        c.drawString(350, height - 115, "Año Lectivo: 2025")
 
-        #TABLA DE CALIFICACIONES
-        
-        # Organizar calificaciones por materia y período
-        materias = {}
-        for materia, periodo, valor in calificaciones:
-            if materia not in materias:
-                materias[materia] = {1: None, 2: None, 3: None}
-            materias[materia][periodo] = valor
+        # TABLA DE CALIFICACIONES
+        data = [["MATERIA", "1er", "2do", "3er", "4to", "DEFINITIVA"]]
+        for materia, p1, p2, p3, p4, definitiva in calificaciones:
+            def fmt(v): return f"{v:.1f}" if isinstance(v, (float, int)) else v
+            data.append([materia, fmt(p1), fmt(p2), fmt(p3), fmt(p4), fmt(definitiva)])
 
-        # Preparar datos para la tabla
-        data = []
-        
-        # Encabezados
-        headers = [
-            ['AREAS', 'ASIGNATURAS', 'I.H', 'AU', 
-             '1er Per.', '', '2do Per.', '', '3ro Per.', '',
-             'PROMEDIO\nASIGNATURA', 'PROMEDIO\nACUMULADO', 'DESEMPEÑO']
-        ]
-        
-        # Sub-encabezados para períodos
-        sub_headers = [
-            ['', '', '', '', 'Val', 'Rec', 'Val', 'Rec', 'Val', 'Rec', '', '', '']
-        ]
-        
-        data.extend(headers)
-        data.extend(sub_headers)
-        
-        # Usar las materias que realmente están en la base de datos
-        for materia_nombre, notas in materias.items():
-            # Calcular promedio
-            valores_validos = [n for n in notas.values() if n is not None]
-            promedio = sum(valores_validos) / len(valores_validos) if valores_validos else 0
-            promedio_acumulado = promedio
-            desempeno = calcular_desempeno(promedio) if promedio > 0 else ""
-            
-            # Formatear valores
-            p1_val = f"{notas[1]:.1f}" if notas[1] else ""
-            p2_val = f"{notas[2]:.1f}" if notas[2] else ""
-            p3_val = f"{notas[3]:.1f}" if notas[3] else ""
-            prom_str = f"{promedio:.1f}" if promedio > 0 else ""
-            prom_acum_str = f"{promedio_acumulado:.1f}" if promedio_acumulado > 0 else ""
-            
-            # Usar el nombre de la materia como área y asignatura
-            row = [
-                materia_nombre.upper(),  # AREA
-                '',  # ASIGNATURA
-                '5',  # I.H (intensidad horaria por defecto)
-                '0',  # AU (ausencias)
-                p1_val, '',  # Val, Rec periodo 1
-                p2_val, '',  # Val, Rec periodo 2
-                p3_val, '',  # Val, Rec periodo 3
-                prom_str,
-                prom_acum_str,
-                desempeno
-            ]
-            data.append(row)
-
-        # Escala de valoración
-        data.append(['', 'ESCALA DE VALORACION NACIONAL', '', '', 'BAJO', '', 'BASICO', '', 'ALTO', '', 'SUPERIOR', '', ''])
-        data.append(['', 'ESCALA DE VALORACION INSTITUCIONAL', '', '', '1.0 a 5.9', '', '6.0 a 7.99', '', '8.0 a 9.49', '', '9.5 a 10.0', '', ''])
-        
-        # Crear tabla
-        table = Table(data, colWidths=[
-            1.0*inch, 1.3*inch, 0.3*inch, 0.3*inch,
-            0.35*inch, 0.35*inch, 0.35*inch, 0.35*inch, 0.35*inch, 0.35*inch,
-            0.6*inch, 0.7*inch, 0.7*inch
-        ])
-        
-        # Estilo de la tabla
-        table_style = TableStyle([
-            # Encabezados principales
-            ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        table = Table(data, colWidths=[2.2*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.9*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#34495e")),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 7),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-            
-            # Sub-encabezados
-            ('BACKGROUND', (0, 1), (-1, 1), colors.lightgrey),
-            ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 1), (-1, 1), 6),
-            ('ALIGN', (0, 1), (-1, 1), 'CENTER'),
-            
-            # Bordes
-            ('GRID', (0, 0), (-1, -3), 0.5, colors.black),
-            ('BOX', (0, 0), (-1, -3), 1, colors.black),
-            
-            # Alineación
-            ('ALIGN', (2, 2), (-1, -1), 'CENTER'),
-            ('ALIGN', (0, 2), (1, -1), 'LEFT'),
-            
-            # Fuente del contenido
-            ('FONTNAME', (0, 2), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 2), (-1, -3), 7),
-            
-            # Escala de valoración
-            ('BACKGROUND', (0, -2), (-1, -1), colors.lightgrey),
-            ('FONTNAME', (0, -2), (-1, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, -2), (-1, -1), 6),
-            ('ALIGN', (0, -2), (-1, -1), 'CENTER'),
-            
-            # Valign
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ])
-        
-        table.setStyle(table_style)
-        
-        # Dibujar tabla
-        table.wrapOn(c, width, height)
-        table.drawOn(c, 40, y_position - 320)
-        
-        y_position -= 340
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1),
+             [colors.whitesmoke, colors.lightgrey])
+        ]))
 
-        #PIE DE PÁGINA CON FIRMAS
-        y_position = 120
-        
-        c.setFont("Helvetica", 7)
-        c.drawString(50, y_position, "CONVENCIONES: AU Ausencias, I.H Intensidad Horaria, H.D Horas Dictadas Por El Docente, Val Valoración, Rec Recuperación, Per Periodo")
-        
-        y_position -= 40
-        
-        # Líneas para firmas
-        c.line(70, y_position, 220, y_position)
-        c.line(380, y_position, 530, y_position)
-        
-        y_position -= 15
-        
-        c.setFont("Helvetica-Bold", 8)
-        c.drawString(80, y_position, "NOMBRE DEL RECTOR")
-        c.drawString(390, y_position, "NOMBRE DIRECTOR DE GRUPO")
-        
-        y_position -= 12
-        c.setFont("Helvetica", 7)
-        c.drawRightString(220, y_position, "Director(a) de Grupo.")
+        table.wrapOn(c, width, height)
+        table.drawOn(c, 50, height - 400)
+
+        # PIE DE PÁGINA
+        c.setFont("Helvetica-Oblique", 8)
+        c.setFillColor(colors.grey)
+        c.drawCentredString(width / 2, 40, "Sistema de Calificaciones • Generado automáticamente")
 
         c.save()
         os.startfile(pdf_name)
@@ -403,10 +233,9 @@ def ventana_reportes(parent):
 
         messagebox.showinfo("✅ PDFs Generados", f"Se generaron los boletines de {len(estudiantes_ids)} estudiantes.")
 
-    #EVENTOS
     btn_ver.config(command=ver_boletin)
     btn_pdf.config(command=generar_pdf_estudiante)
     btn_todos.config(command=generar_pdf_todos)
 
     cargar_estudiantes()
-    preview_text.insert("end", "\n\nSeleccione un estudiante y presione '📊 Ver Boletín' para ver las calificaciones.\n")
+    preview_text.insert("end", "\nSeleccione un estudiante y presione '📊 Ver Boletín' para ver las calificaciones.\n")

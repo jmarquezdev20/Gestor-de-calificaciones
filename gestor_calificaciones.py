@@ -164,7 +164,9 @@ def generar_boletin():
         """
 
         for materia, periodo, definitiva in datos:
-            html += f"<tr><td>{materia}</td><td>{periodo}</td><td>{definitiva:.2f}</td></tr>"
+            # CAMBIO: Redondear la definitiva a número entero
+            definitiva_redondeada = round(definitiva)
+            html += f"<tr><td>{materia}</td><td>{periodo}</td><td>{definitiva_redondeada}</td></tr>"
 
         html += "</table></body></html>"
 
